@@ -1,0 +1,58 @@
+---
+- name: Instala la base para los equipos de los laboratorios de Greencore Solutions
+  hosts: pi
+  tasks:
+  - name: Instala aptitude (requerido por ansible)
+    apt:
+      name: aptitude
+      state: latest
+      update_cache: yes
+    become: yes   
+  - name: Actualiza cache, paquetes, y autoremueve
+    apt:
+      upgrade: dist 
+      update_cache: yes
+      # autoremove not available in 16.04's ansible
+      autoremove: yes
+    become: yes
+  - name: Instala paquetes requeridos para esta receta
+    apt: 
+      name: "{{ item }}"
+      state: installed
+    with_items:
+      - raspberrypi-kernel-headers
+      - git
+      - libgmp3-dev
+      - gawk
+      - qpdf
+    become: yes
+  - git:
+      dest: "{{ ansible_user }}/nexmon"
+      repo: https://github.com/seemoo-lab/nexmon.git
+  - name: Configura ambiente para compilado de software nexmon
+    command: source setup_env.sh
+    chdir: "{{ ansible_user }}/nexmon"
+  - name: Compila el software nexmon
+    command: make -j4
+    chdir: "{{ ansible_user }}/nexmon"
+    #    become: yes
+  - name: Compila el software nexmon, bcm43438 chipset
+    command: make -j4
+    chdir: "{{ ansible_user }}/nexmon/patches/bcm43438/7_45_41_26/nexmon/"
+    #    become: yes
+  - name: Realiza respaldo de firmware, bcm43438 chipset
+    command: make backup-firmware
+    chdir: "{{ ansible_user }}/nexmon/patches/bcm43438/7_45_41_26/nexmon/"
+    #    become: yes
+  - name: Instala nuevo firmware, bcm43438 chipset
+    command: make install-firmware
+    chdir: "{{ ansible_user }}/nexmon/patches/bcm43438/7_45_41_26/nexmon/"
+    become: yes
+  - name: Compila utilizario nextutil para software nexmon
+    command: make -j4
+    chdir: "{{ ansible_user }}/nexmon/utilities/nexutil"
+    #    become: yes
+  - name: Compila utilizario nextutil para software nexmon
+    command: make install
+    chdir: "{{ ansible_user }}/nexmon/utilities/nexutil"
+    become: yes

@@ -1,6 +1,18 @@
 ---
 - name: Instala la base para los equipos de los laboratorios de Greencore Solutions
   hosts: pi
+  environment:
+    - ARCH: arm
+    - OLD_PWD: "{{ ansible_user }}/nexmon"
+    - SUBARCH: arm
+    - KERNEL: kernel7
+    - HOSTUNAME: Linux
+    - PLATFORMUNAME: armv7l
+    - CC: /home/pi/nexmon/buildtools/gcc-arm-none-eabi-5_4-2016q2-linux-armv7l/bin/arm-none-eabi-
+    - CCPLUGIN: /home/pi/nexmon/buildtools/gcc-nexmon-plugin-arm/nexmon.so
+    - ZLIBFLATE: zlib-flate -compress
+    - NEXMON_ROOT: /home/pi/nexmon
+    - NEXMON_SETUP_ENV: 1
   tasks:
   - name: Instala aptitude (requerido por ansible)
     apt:
@@ -8,13 +20,14 @@
       state: latest
       update_cache: yes
     become: yes   
-  - name: Actualiza cache, paquetes, y autoremueve
-    apt:
-      upgrade: dist 
-      update_cache: yes
-      # autoremove not available in 16.04's ansible
-      autoremove: yes
-    become: yes
+    ## https://github.com/seemoo-lab/nexmon/issues/75
+    #  - name: Actualiza cache, paquetes, y autoremueve
+    #apt:
+    #upgrade: dist 
+    #update_cache: yes
+    # autoremove not available in 16.04's ansible
+    #autoremove: yes
+    #become: yes
   - name: Instala paquetes requeridos para esta receta
     apt: 
       name: "{{ item }}"
@@ -25,41 +38,87 @@
       - libgmp3-dev
       - gawk
       - qpdf
+      - bison
+      - flex
+      - bc
+      - libncurses5-dev
     become: yes
-  - git:
-      dest: "{{ ansible_user }}/nexmon"
+  - name: Instala rpi-source, utilitario para fuente de kernel en las Pi
+    get_url: 
+      url: https://raw.githubusercontent.com/notro/rpi-source/master/rpi-source
+      dest: /usr/bin/rpi-source
+      mode: 0755
+      owner: root
+      group: root
+    become: yes
+  - name: Ejecuta rpi-source, para descargar fuente de kernel en las Pi
+    command: rpi-source -d /usr/src/
+    become: yes
+    ignore_errors: true
+  - name: Descarga software nexmon
+    git:
+      #dest: "{{ ansible_user }}/nexmon" ## Pulga, sale como /home/pi/pi/nexmon...
+      dest: /home/pi/nexmon
       repo: https://github.com/seemoo-lab/nexmon.git
-  - name: Configura ambiente para compilado de software nexmon
-    command: source setup_env.sh
+    ignore_errors: true
+  - name: Parcha la herramienta nexutil, https://github.com/seemoo-lab/nexmon/issues/62
+    lineinfile: >
+      path=/home/pi/nexmon/utilities/nexutil/nexutil.c
+      regexp='stdint'
+      insertbefore='#define _XOPEN_SOURCE 700'
+      line="#include <sys/types.h>
+        #include <stdint.h>
+        #include <stdlib.h>"
+  - name: Compila nexmon
+    command: make
     args:
-      chdir: "{{ ansible_user }}/nexmon"
-  - name: Compila el software nexmon
-    command: make -j4
-    args:
-      chdir: "{{ ansible_user }}/nexmon"
-    #    become: yes
+      chdir: /home/pi/nexmon
   - name: Compila el software nexmon, bcm43438 chipset
     command: make -j4
     args:
-      chdir: "{{ ansible_user }}/nexmon/patches/bcm43438/7_45_41_26/nexmon/"
+      chdir: /home/pi/nexmon/patches/bcm43438/7_45_41_26/nexmon/
     #    become: yes
   - name: Realiza respaldo de firmware, bcm43438 chipset
     command: make backup-firmware
     args:
-      chdir: "{{ ansible_user }}/nexmon/patches/bcm43438/7_45_41_26/nexmon/"
+      chdir: /home/pi/nexmon/patches/bcm43438/7_45_41_26/nexmon/
     #    become: yes
   - name: Instala nuevo firmware, bcm43438 chipset
     command: make install-firmware
     args:
-      chdir: "{{ ansible_user }}/nexmon/patches/bcm43438/7_45_41_26/nexmon/"
+      chdir: /home/pi/nexmon/patches/bcm43438/7_45_41_26/nexmon/
     become: yes
   - name: Compila utilizario nextutil para software nexmon
     command: make -j4
     args:
-      chdir: "{{ ansible_user }}/nexmon/utilities/nexutil"
+      chdir: /home/pi/nexmon/utilities/nexutil
     #    become: yes
-  - name: Compila utilizario nextutil para software nexmon
+  - name: Instala utilizario nextutil para software nexmon
     command: make install
     args:
-      chdir: "{{ ansible_user }}/nexmon/utilities/nexutil"
+      chdir: /home/pi/nexmon/utilities/nexutil
     become: yes
+  - name: Remueve paquetes
+    apt:
+      name: "{{ item }}"
+      state: absent
+    become: yes
+    with_items:
+      - wpasupplicant
+  - name: Decide si debe copiar el nuevo módulo de kernel
+    command: test "md5sum /lib/modules/4.4.34-v7+/kernel/drivers/net/wireless/brcm80211/brcmfmac/brcmfmac.ko" == "52623c3a481dca9a233088deab271f79"
+    register: modulo_viejo
+    ignore_errors: true
+  - name: Respalda viejo driver de kernel
+    file:
+      src: /home/pi/nexmon/patches/bcm43438/7_45_41_26/nexmon/brcmfmac/brcmfmac.ko
+      dest: /lib/modules/4.4.34-v7+/kernel/drivers/net/wireless/brcm80211/brcmfmac/brcmfmac.ko
+      owner: root
+      group: root
+      mode: 0644
+    become: yes
+    when: modulo_viejo.changed
+  - name: Ejecuta depmod
+    command: depmod -a
+    become: yes
+    when: modulo_viejo.changed

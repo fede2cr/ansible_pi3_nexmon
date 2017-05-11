@@ -11,6 +11,11 @@ To change this, we use the Nexmon firmware project, that enables among other thi
 
 Yet, it is not integrated in distributions such as Raspian, and compiling the modules is a long process, requires quite a bit of space (won't fit on an 8GB SD card), so to speed up this process I have created this ansible recipe for automating the installation of the firmware in Pi3.
 
+## Verifying
+
+If the Ansible recipe worked well, you should be able to run this commands and tests your wifi interface in monitor mode:
+![Monitor mode verification](https://github.com/fede2cr/ansible_pi3_nexmon/blob/master/doc/img/pi3-nexmon-verify.gif "Monitor mode verification")
+
 ## TODO
 
 - [ ] Since compiling on a Pi is time consuming, a nice idea would be to create a Debian package with a PPA repository, that includes the bcm43438 chipset as well as the nexutil tool required for manipulating the monitor mode.

@@ -42,6 +42,7 @@
       - flex
       - bc
       - libncurses5-dev
+      - tcpdump
     become: yes
   - name: Instala rpi-source, utilitario para fuente de kernel en las Pi
     get_url: 

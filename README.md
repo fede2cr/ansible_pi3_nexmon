@@ -11,6 +11,19 @@ To change this, we use the Nexmon firmware project, that enables among other thi
 
 Yet, it is not integrated in distributions such as Raspian, and compiling the modules is a long process, requires quite a bit of space (won't fit on an 8GB SD card), so to speed up this process I have created this ansible recipe for automating the installation of the firmware in Pi3.
 
+#### Note: This will not be required in the [next version of Kali Linux for the Pi](https://github.com/offensive-security/kali-arm-build-scripts/pull/92), or you can build yourself a fresh image
+
+## Usage
+
+You need Ansible installed in a manage computer, and on the Raspberries you only need python2 which is installed by default.
+With an editor, modify the file ```inventory/hosts``` to add any extra raspberries IP, and then do an ssh-copy-id to those raspberries.
+Then run the ansible-playbook like this:
+
+```bash
+ansible-playbook pi3-nexmon-install.yml -i inventory/hosts.example -K
+```
+It will as you for the sudo password of all of the Raspberries, and automatically install the software and kernel modules.
+
 ## Verifying
 
 If the Ansible recipe worked well, you should be able to run this commands and tests your wifi interface in monitor mode:

@@ -1,0 +1,6 @@
+[all:vars]
+ansible_user=pi
+ansible_python_interpreter=/usr/bin/python2
+
+[pi]
+192.168.IP.IP

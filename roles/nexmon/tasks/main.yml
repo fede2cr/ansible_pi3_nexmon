@@ -1,0 +1,153 @@
+- name: Install aptitude 
+  apt:
+    name: aptitude
+    state: latest
+    update_cache: yes
+  become: yes   
+  ## https://github.com/seemoo-lab/nexmon/issues/75
+  #  - name: Actualiza cache, packages, y autoremuove
+  #apt:
+  #upgrade: dist 
+  #update_cache: yes
+  # autoremove not available in 16.04's ansible
+  #autoremove: yes
+  #become: yes
+- name: Install packages pendukung
+  apt: 
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - raspberrypi-kernel-headers
+    - git
+    - libgmp3-dev
+    - gawk
+    - qpdf
+    - bison
+    - flex
+    - bc
+    - libncurses5-dev
+    - tcpdump
+    - make
+  become: yes
+- name: get rpi-source
+  get_url: 
+    url: https://raw.githubusercontent.com/notro/rpi-source/master/rpi-source
+    dest: /usr/bin/rpi-source
+    mode: 0755
+    owner: root
+    group: root
+  become: yes
+- name: execute rpi-source
+  command: rpi-source -d /usr/src/
+  become: yes
+  ignore_errors: true
+- name: git nexmon from repo
+  git:
+    #dest: "{{ ansible_user }}/nexmon" ## Pulga, sale como /home/pi/pi/nexmon...
+    dest: /home/pi/nexmon
+    repo: https://github.com/seemoo-lab/nexmon.git
+  ignore_errors: true
+- name: add nexutill, https://github.com/seemoo-lab/nexmon/issues/62
+  lineinfile: >
+    path=/home/pi/nexmon/utilities/nexutil/nexutil.c
+    regexp='stdint'
+    insertbefore='#define _XOPEN_SOURCE 700'
+    line="#include <sys/types.h>
+      #include <stdint.h>
+      #include <stdlib.h>"
+- name: copy lib isl
+  copy:
+    src: templates/libisl.so.10.0.0
+    dest: /usr/local/lib/
+  become: yes
+- name: symlink
+  command: ln -s /usr/local/lib/libisl.so.10.0.0 /usr/local/lib/libisl.so
+  become: yes
+  ignore_errors: true
+
+- name: symlink
+  command: ln -s /usr/local/lib/libisl.so /usr/lib/arm-linux-gnueabihf/libisl.so.10
+  become: yes
+  ignore_errors: true
+
+# - name: reinstall bootloader
+#   apt:
+#     name: "{{ packages }}"
+#     force_apt_get: yes
+#     update_cache: yes    
+#     state: present
+#   vars:
+#     packages:
+#     - raspberrypi-bootloader
+#     - raspberrypi-kernel
+#   become: yes
+
+- name: update to 4.14.79
+  shell: sudo rpi-update 2267b322afdb18b4abf9603fea836916190b1b5d
+  become: yes
+
+- name: Reboot
+  shell: sleep 2 && reboot
+  become: yes
+  async: 30
+  poll: 0
+  ignore_errors: true
+  
+- name: Wait for connection
+  wait_for_connection:
+    delay: 10
+    timeout: 120
+
+- name: Compile nexmon
+  command: make
+  args:
+    chdir: /home/pi/nexmon
+
+- name: Compile software nexmon, bcm43430a1 chipset
+  command: make 
+  args:
+    chdir: /home/pi/nexmon/patches/bcm43430a1/7_45_41_46/nexmon/
+  become: yes
+- name: backup firmware, bcm43430a1 chipset
+  command: make backup-firmware
+  args:
+    chdir: /home/pi/nexmon/patches/bcm43430a1/7_45_41_46/nexmon/
+  become: yes
+- name: install new firmware, bcm43430a1 chipset
+  command: make install-firmware
+  args:
+    chdir: /home/pi/nexmon/patches/bcm43430a1/7_45_41_46/nexmon/
+  become: yes
+- name: Compile utilities nextutil from software nexmon
+  command: make 
+  args:
+    chdir: /home/pi/nexmon/utilities/nexutil
+  become: yes
+- name: Install utilities nextutil from software nexmon
+  command: make install
+  args:
+    chdir: /home/pi/nexmon/utilities/nexutil
+  become: yes
+- name: remove packages
+  apt:
+    name: "{{ item }}"
+    state: absent
+  become: yes
+  with_items:
+    - wpasupplicant
+# - name: Decide if you should copy new kernel module
+#   command: test "md5sum /lib/modules/4.14.79-v7+/kernel/drivers/net/wireless/brcm80211/brcmfmac/brcmfmac.ko" == "52623c3a481dca9a233088deab271f79"
+#   register: modulo_viejo
+#   ignore_errors: true
+- name: Copy file
+  shell: cp /home/pi/nexmon/patches/bcm43430a1/7_45_41_46/nexmon/brcmfmac_4.14.y-nexmon/brcmfmac.ko /lib/modules/4.14.79-v7+/kernel/drivers/net/wireless/broadcom/brcm80211/brcmfmac/
+  become: yes
+  #   owner: root
+  #   group: root
+  #   mode: 0644
+  # become: yes
+  # when: modulo_viejo.changed
+- name: execute depmod
+  command: depmod -a
+  become: yes
+  # when: modulo_viejo.changed
